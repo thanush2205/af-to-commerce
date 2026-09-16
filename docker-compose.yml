@@ -1,0 +1,137 @@
+x-app-environment: &app-environment
+  APP_ENV: ${APP_ENV:-development}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me}
+  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@database:5432/afcommerce}
+  ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-elasticsearch}
+  ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT:-9200}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  SCRAPER_API_TOKEN: ${SCRAPER_API_TOKEN:-change-me}
+
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-afcommerce}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    restart: unless-stopped
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  dagster-webserver:
+    image: dagster/dagster:${DAGSTER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    command:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - /workspace/workspace.yaml
+    volumes:
+      - ./dagster:/workspace
+      - dagster-home:/opt/dagster/dagster_home
+    ports:
+      - "3000:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+
+  dagster-daemon:
+    image: dagster/dagster:${DAGSTER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      DAGSTER_HOME: /opt/dagster/dagster_home
+    command: dagster-daemon run
+    volumes:
+      - ./dagster:/workspace
+      - dagster-home:/opt/dagster/dagster_home
+    depends_on:
+      database:
+        condition: service_healthy
+
+  scraper:
+    build:
+      context: ./scraper
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./apps
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+    ports:
+      - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  stripe-worker:
+    build:
+      context: ./stripe
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+    depends_on:
+      database:
+        condition: service_healthy
+
+volumes:
+  database-data:
+  elasticsearch-data:
+  dagster-home:

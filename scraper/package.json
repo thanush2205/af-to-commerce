@@ -1,0 +1,19 @@
+{
+  "name": "summerhill-scraper",
+  "version": "1.0.0",
+  "description": "Summerhill Market product catalog scraper (Homesome API)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "scrape": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7"
+  }
+}
