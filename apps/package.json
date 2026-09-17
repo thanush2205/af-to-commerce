@@ -1,0 +1,21 @@
+{
+  "name": "af-commerce-api",
+  "version": "1.0.0",
+  "description": "Backend API for the AF-TO Commerce storefront: PostgreSQL product fetching + Elasticsearch search.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.13.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}

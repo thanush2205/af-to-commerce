@@ -105,6 +105,25 @@ docker compose exec -T dagster-webserver \
 
 Dagster UI: `http://localhost:3000`. See [dagster/README.md](dagster/README.md).
 
+## Section 6 — Backend API (DONE)
+
+Node.js (Express) bridge between the storefront and the databases:
+
+- `GET /api/products`, `GET /api/products/:id` — **PostgreSQL** catalog (filter/sort/paginate, detail with images)
+- `GET /api/categories` — **PostgreSQL** category tree with counts
+- `GET /api/search` — **Elasticsearch** full-text search (fuzzy, filters, `sort=price_asc`, pagination)
+- JSON `{ data, pagination }` / `{ error }` envelope; 19 `node --test` unit tests pass
+
+Rerun:
+
+```bash
+docker compose up -d --build api
+docker compose exec -T api npm test
+curl "http://localhost:8000/api/search?q=chips&sort=price_asc&limit=5"
+```
+
+Live API: `http://localhost:8000/api`. See [apps/README.md](apps/README.md).
+
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine + Docker Compose)

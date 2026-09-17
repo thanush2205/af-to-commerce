@@ -140,8 +140,17 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-environment
+      # The compose stack is self-contained: pin the API to the internal
+      # Postgres (the host .env may point at an external Supabase that the
+      # container network cannot reach).
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/afcommerce
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     depends_on:
       database:
         condition: service_healthy
