@@ -65,7 +65,6 @@ export default async function ProductsPage({
 
   const activeCategory =
     categories.find((c) => c.slug === category || c.name === category) ?? null
-  const showFilters = !q && page === 1 && !activeCategory
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
@@ -137,6 +136,36 @@ export default async function ProductsPage({
         </div>
       </form>
 
+      {/* Category filter chips — [All] [Fruits] [Vegetables] … */}
+      <div className="mb-8 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+          Category:
+        </span>
+        <Link
+          href={pageLink({ q, category: '', sort, page: 1 })}
+          className={
+            !activeCategory
+              ? 'rounded-full bg-leaf px-4 py-1.5 text-sm font-semibold text-white'
+              : 'rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-700 transition hover:border-leaf hover:text-leaf'
+          }
+        >
+          All
+        </Link>
+        {categories.map((c) => (
+          <Link
+            key={c.id}
+            href={pageLink({ q, category: c.slug, sort, page: 1 })}
+            className={
+              activeCategory?.slug === c.slug
+                ? 'rounded-full bg-leaf px-4 py-1.5 text-sm font-semibold text-white'
+                : 'rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-700 transition hover:border-leaf hover:text-leaf'
+            }
+          >
+            {c.name}
+          </Link>
+        ))}
+      </div>
+
       {products.length === 0 ? (
         <p className="rounded-xl border border-dashed border-gray-300 p-10 text-center text-sm text-gray-500">
           No products match those filters.
@@ -197,25 +226,6 @@ export default async function ProductsPage({
             </Link>
           )}
         </nav>
-      )}
-
-      {!showFilters && (
-        <aside className="mt-12 rounded-2xl border border-gray-200 bg-white p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Browse categories
-          </h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {categories.map((c) => (
-              <Link
-                key={c.id}
-                href={pageLink({ q: '', category: c.slug, sort: 'relevance', page: 1 })}
-                className="rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:border-leaf hover:text-leaf"
-              >
-                {c.name}
-              </Link>
-            ))}
-          </div>
-        </aside>
       )}
     </div>
   )
