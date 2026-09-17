@@ -1,0 +1,50 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "analysis": {
+      "normalizer": {
+        "lowercase": {
+          "type": "custom",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "id": { "type": "keyword" },
+      "sku": { "type": "keyword" },
+      "slug": { "type": "keyword" },
+      "name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "normalizer": "lowercase",
+            "ignore_above": 256
+          }
+        }
+      },
+      "description": { "type": "text" },
+      "brand": { "type": "keyword" },
+      "price": { "type": "double" },
+      "currency": { "type": "keyword" },
+      "category": { "type": "keyword" },
+      "subcategory": { "type": "keyword" },
+      "availability": { "type": "keyword" },
+      "organic": { "type": "boolean" },
+      "descriptionSource": { "type": "keyword" },
+      "unit": { "type": "keyword", "index": false },
+      "unitQuantity": { "type": "double", "index": false },
+      "minQuantity": { "type": "double", "index": false },
+      "maxQuantity": { "type": "double", "index": false },
+      "images": { "type": "keyword", "index": false },
+      "mainImage": { "type": "keyword", "index": false },
+      "thumbnail": { "type": "keyword", "index": false }
+    }
+  }
+}

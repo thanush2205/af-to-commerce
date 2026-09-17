@@ -1,0 +1,20 @@
+{
+  "name": "af-commerce-search",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Elasticsearch index for the Summerhill Market catalog: full-text search, category filtering, price sorting, pagination.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "ensure-index": "node src/ensure-index.js",
+    "index-products": "node src/index-products.js",
+    "smoke": "node src/smoke.js"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.13.0",
+    "dotenv": "^16.4.5"
+  }
+}

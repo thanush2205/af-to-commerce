@@ -2,8 +2,12 @@ x-app-environment: &app-environment
   APP_ENV: ${APP_ENV:-development}
   APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me}
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@database:5432/afcommerce}
-  ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-elasticsearch}
-  ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT:-9200}
+  # Internal URLs & hostnames are fixed here so containers always resolve each
+  # other regardless of what a local developer copies into .env.
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  ELASTICSEARCH_HOST: elasticsearch
+  ELASTICSEARCH_PORT: 9200
+  ELASTICSEARCH_INDEX: products
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
   STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
