@@ -115,9 +115,9 @@ async function seedCategories(): Promise<Map<string, number>> {
       })
     } else {
       const created = await payload.create({ collection: 'categories', data })
-      slugToId.set(c.slug, created.id)
+      slugToId.set(c.slug, Number(created.id))
     }
-    if (existing.totalDocs > 0) slugToId.set(c.slug, existing.docs[0].id)
+    if (existing.totalDocs > 0) slugToId.set(c.slug, Number(existing.docs[0].id))
     console.log(`Category ${c.slug} -> id ${slugToId.get(c.slug)}`)
   }
   return slugToId

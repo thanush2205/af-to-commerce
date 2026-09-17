@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { apiGet, formatPrice, type ApiProduct } from '@/lib/api'
+import { AddToCartButton } from '@/components/AddToCartButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -142,15 +143,16 @@ export default async function ProductDetailPage({
             </div>
           )}
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <AddToCartButton product={product} />
             <a
               href={`/products?category=${encodeURIComponent(product.category.slug)}`}
               className="btn-outline"
             >
               More {product.category.name.toLowerCase()}
             </a>
-            <Link href="/products" className="btn-primary">
-              Continue shopping
+            <Link href="/cart" className="btn-outline">
+              View cart
             </Link>
           </div>
         </div>

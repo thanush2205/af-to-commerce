@@ -79,7 +79,7 @@ export default async function HomePage() {
     slug: string
     icon?: string | null
   }[]
-  const featured = (featuredResult?.docs ?? []).map(toApiProduct)
+  const featured = ((featuredResult?.docs ?? []) as unknown as FeaturedDoc[]).map(toApiProduct)
 
   return (
     <div>
