@@ -81,6 +81,30 @@ npm test                   # 11 unit tests
 
 See [elasticsearch/README.md](elasticsearch/README.md) and [query-examples.md](elasticsearch/query-examples.md).
 
+## Section 5 — Dagster ingestion pipeline (DONE)
+
+Orchestrates the offline ingestion: reads `scraper/output/products.json`,
+normalizes it, upserts **PostgreSQL** (source of truth) and bulk-upserts
+**Elasticsearch** (derived search index).
+
+- Assets: `raw_products` → `normalized_products` → `postgres_products` → `elasticsearch_products`; job `catalog_ingestion`
+- **Idempotent reruns**: Postgres `ON CONFLICT` on natural keys in a single transaction; ES `_id = sku` — a second run updates in place, never duplicates
+- **Failure handling**: DB batch rolls back on error; ES op raises on bulk failures (no silent success); every asset logs run stats
+- Daily 03:00 schedule registered (stopped by default)
+- 16 pytest tests (transform logic + upsert SQL contracts) pass
+
+Rerun:
+
+```bash
+docker compose up -d --build database elasticsearch dagster-webserver dagster-daemon
+docker compose exec -T dagster-webserver pytest -q /workspace/tests
+docker compose exec -T dagster-webserver \
+  dagster asset materialize -f /workspace/definitions.py \
+  --select raw_products,normalized_products,postgres_products,elasticsearch_products
+```
+
+Dagster UI: `http://localhost:3000`. See [dagster/README.md](dagster/README.md).
+
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine + Docker Compose)

@@ -66,12 +66,18 @@ services:
       - elasticsearch
 
   dagster-webserver:
-    image: dagster/dagster:${DAGSTER_VERSION:-latest}
+    build:
+      context: ./dagster
     restart: unless-stopped
     environment:
       <<: *app-environment
       DAGSTER_HOME: /opt/dagster/dagster_home
-    command:
+      # Pin the pipeline to the compose-internal services so the local stack is
+      # always self-consistent (same rationale as the ES URLs above).
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/afcommerce
+      PRODUCTS_JSON_PATH: /workspace/input/products.json
+      ES_MAPPING_PATH: /workspace/mappings/product.index.json
+    entrypoint:
       - dagster-webserver
       - -h
       - "0.0.0.0"
@@ -81,25 +87,41 @@ services:
       - /workspace/workspace.yaml
     volumes:
       - ./dagster:/workspace
+      - ./scraper/output:/workspace/input:ro
+      - ./elasticsearch/mappings:/workspace/mappings:ro
       - dagster-home:/opt/dagster/dagster_home
     ports:
       - "3000:3000"
     depends_on:
       database:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
 
   dagster-daemon:
-    image: dagster/dagster:${DAGSTER_VERSION:-latest}
+    build:
+      context: ./dagster
     restart: unless-stopped
     environment:
       <<: *app-environment
       DAGSTER_HOME: /opt/dagster/dagster_home
-    command: dagster-daemon run
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/afcommerce
+      PRODUCTS_JSON_PATH: /workspace/input/products.json
+      ES_MAPPING_PATH: /workspace/mappings/product.index.json
+    entrypoint:
+      - dagster-daemon
+      - run
+      - -w
+      - /workspace/workspace.yaml
     volumes:
       - ./dagster:/workspace
+      - ./scraper/output:/workspace/input:ro
+      - ./elasticsearch/mappings:/workspace/mappings:ro
       - dagster-home:/opt/dagster/dagster_home
     depends_on:
       database:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
 
   scraper:

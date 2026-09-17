@@ -1,0 +1,6 @@
+# Code location for the Dagster webserver / daemon.
+# The repo directory is mounted at /workspace in the container, so
+# relative_path resolves to /workspace/definitions.py.
+load_from:
+  - python_file:
+      relative_path: definitions.py

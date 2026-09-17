@@ -1,0 +1,1 @@
+"""Pytest suite for the ingestion pipeline's pure logic."""

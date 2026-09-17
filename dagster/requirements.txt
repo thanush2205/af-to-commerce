@@ -1,0 +1,5 @@
+# Bases image dagster/dagster:latest already ships dagster + dagster-webserver.
+# These are the extra runtime/test deps this pipeline needs.
+psycopg[binary]>=3.1,<4
+elasticsearch>=8.13,<9
+pytest>=8,<9

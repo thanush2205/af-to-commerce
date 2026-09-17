@@ -1,0 +1,25 @@
+# Dagster instance configuration for the host-process (webserver/daemon)
+# containers.
+#
+# Defaults are intentional: all run / event-log / schedule metadata is stored
+# under $DAGSTER_HOME in the `dagster-home` volume using sqlite. This is the
+# right choice for an offline, single-node ingestion stack.
+
+# To back runs with Postgres instead (Supabase or the compose `database`
+# service), uncomment and set the following three blocks:
+#
+# run_storage:
+#   module: dagster_postgres.run_storage
+#   class: PostgresRunStorage
+#   config:
+#     postgres_url: postgresql://postgres:postgres@database:5432/afcommerce
+# event_log_storage:
+#   module: dagster_postgres.event_log
+#   class: PostgresEventLogStorage
+#   config:
+#     postgres_url: postgresql://postgres:postgres@database:5432/afcommerce
+# schedule_storage:
+#   module: dagster_postgres.schedule_storage
+#   class: PostgresScheduleStorage
+#   config:
+#     postgres_url: postgresql://postgres:postgres@database:5432/afcommerce
