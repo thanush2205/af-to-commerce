@@ -157,6 +157,34 @@ services:
       elasticsearch:
         condition: service_healthy
 
+  # Stage 3 storefront: Next.js App Router + Payload CMS v3.
+  # Port 3001 both hosts the Payload admin (http://localhost:3001/admin) and the
+  # storefront (http://localhost:3001). The admin-ui is port 3000 (Dagster) so
+  # this is intentionally separate.
+  web:
+    build:
+      context: ./web
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET:-dev-secret-fbfa1b9f73c14baeb9b9f}
+      PAYLOAD_ADMIN_EMAIL: ${PAYLOAD_ADMIN_EMAIL:-admin@summerhill.demo}
+      PAYLOAD_ADMIN_PASSWORD: ${PAYLOAD_ADMIN_PASSWORD:-admin1234}
+      # Pin to the compose-internal Postgres (same rationale as the api/dagster
+      # services — host .env may point at an external Supabase).
+      DATABASE_URI: postgresql://postgres:postgres@database:5432/afcommerce
+      API_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3001:3001"
+    depends_on:
+      database:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
   stripe-worker:
     build:
       context: ./stripe

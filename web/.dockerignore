@@ -1,0 +1,17 @@
+node_modules
+.next
+.next/cache/artifacts
+out
+.git
+npm-debug.log*
+*.md
+!.env.example
+.env*
+test
+coverage
+.turbo
+.dockerignore
+Dockerfile
+
+# Ignore top-level docs in the image (README, etc.)
+payload-types.ts
