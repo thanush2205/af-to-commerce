@@ -585,7 +585,38 @@ local Postgres instead.
 
 ---
 
-## 15. Quick file reference
+## 15. If asked — where would Redis fit
+
+Say this briefly and clearly if the reviewer asks about caching.
+
+**Where:**
+1. **As a read cache in front of the API** — the highest value. Product lists
+   and search results are the same for every customer, and the catalog changes
+   only once a day. So cache those responses for a few minutes.
+2. **As rate-limit storage** — count requests per IP across all API servers
+   with an increment and an expiry window. In-memory counting only works on one
+   server and resets on restart.
+3. **As a fast webhook dedupe** — check the Stripe session id with a lock
+   before the database write, so re-sent events are dropped early.
+
+**How:**
+- Add `redis:7` to Docker Compose (or a managed Redis on Render/Upstash) and
+  expose it as one `REDIS_URL` environment variable.
+- The cache key is the exact request, hashed: text, filters, sort, and page.
+- To keep cached data correct: every Dagster run writes a new catalog version
+  number into Redis, and every cache key includes that number — a fresh
+  ingestion instantly invalidates old entries instead of waiting for a TTL.
+- Rule everywhere: **fail-open**. If Redis is down, log it and serve normally.
+  Redis is a performance boost, never a hard dependency.
+
+**One line to memorize:** "Redis would sit next to the API as a fail-open read
+cache for search and product lists, keyed by the request and invalidated by a
+Dagster-run catalog version, and it would also hold rate-limit counters and a
+webhook dedupe lock."
+
+---
+
+## 16. Quick file reference
 
 | Area | File |
 | ---- | ---- |
@@ -610,7 +641,7 @@ local Postgres instead.
 
 ---
 
-## 16. Tests
+## 17. Tests
 
 - Backend API: `cd apps && npm test` → **38/38 pass**.
 - Scraper: `cd scraper && npm test` → 9 tests.
@@ -620,7 +651,7 @@ local Postgres instead.
 
 ---
 
-## 17. Live data counts (local Postgres)
+## 18. Live data counts (local Postgres)
 
 - Products: 5,047
 - Categories: 18
