@@ -20,14 +20,17 @@ app.disable("x-powered-by");
 // Browser origins allowed to call the API cross-origin (dev: web on :3000/:3001,
 // API on :8000). Storefront pages render server-side so GETs need no CORS; the
 // cart/checkout fetches run in the browser and POSTs preflight.
-const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Resolved per request so tests and environment changes never go stale.
+function resolveCorsOrigins() {
+  return (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && corsOrigins.includes(origin)) {
+  if (origin && resolveCorsOrigins().includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");

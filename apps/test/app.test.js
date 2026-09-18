@@ -6,6 +6,8 @@ let base;
 
 test.before(async () => {
   process.env.NODE_ENV = "test";
+  // Pin the allowlist so this suite never depends on ambient CORS_ORIGINS.
+  process.env.CORS_ORIGINS = "http://localhost:3000,http://localhost:3001";
   const { app } = await import("../src/app.js");
   server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
