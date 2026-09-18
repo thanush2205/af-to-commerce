@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     console.log(`${email} — created.`)
   }
 
-  await payload.db.destroy()
+  await payload.db?.destroy?.()
 }
 
 main()

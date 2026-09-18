@@ -25,6 +25,13 @@ export default buildConfig({
     meta: {
       titleSuffix: ' — AF-TO Commerce',
     },
+    components: {
+      // "← Back" at the top of the sidebar: returns to the last-visited
+      // storefront page (/products fallback) instead of the browser default.
+      beforeNavLinks: [
+        { path: './components/admin/BackToStore', exportName: 'default' },
+      ],
+    },
   },
   collections: [Categories, Products, Users],
   globals: [Hero],
