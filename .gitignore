@@ -19,6 +19,9 @@ scraper/output/
 # Dagster normalized-artifact output (generated data)
 dagster/output/
 
+# Loom narration script (local-only; never pushed to the repo)
+docs/LOOM_SCRIPT.md
+
 # Logs
 *.log
 logs/
