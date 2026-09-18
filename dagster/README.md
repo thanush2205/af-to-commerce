@@ -94,6 +94,74 @@ curl -s http://localhost:9200/products/_count
 The Dagster UI (asset graph, run history, logs) is at
 [http://localhost:3000](http://localhost:3000).
 
+## Elasticsearch sample queries
+
+After materialization the `products` index holds one document per SKU. Field
+notes for writing queries:
+
+| Field        | Mapping   | Use for                                  |
+| ------------ | --------- | ---------------------------------------- |
+| `name`       | `text`    | full-text match (dedicated `name.keyword` for exact) |
+| `description`| `text`    | full-text match                          |
+| `category`, `subcategory` | `keyword` | exact term filter |
+| `price`      | `double`  | range filters + sorting                  |
+| `organic`, `availability` | `boolean` / `keyword` | filters |
+
+`category`/`subcategory` store the display names as scraped (e.g. `"Bakery"`),
+so term filters must use the exact stored name (the Search API resolves the
+storefront's slug form to the name before hitting ES).
+
+```bash
+# 0. Total documents
+curl -s "http://localhost:9200/products/_count?pretty"
+
+# 1. Full-text search on NAME
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "match": { "name": "naan" } } }'
+
+# 2. Full-text search on DESCRIPTION
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "match": { "description": "wild rice" } } }'
+
+# 3. Both at once — name weighted higher, description boosts relevance
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "multi_match": {
+    "query": "organic tomato",
+    "fields": ["name^2", "description"],
+    "tie_breaker": 0.3 } } }'
+
+# 4. Filter BY CATEGORY (+ count)
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "term": { "category": "Bakery" } } }'
+
+# 5. Category filter + SORT BY PRICE (cheapest first)
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "term": { "category": "Produce" } },
+  "sort": [ { "price": { "order": "asc" } } ],
+  "size": 10 }'
+
+# 6. Combined: name match + category filter + price range + price sort
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "bool": {
+    "must": { "match": { "name": "chips" } },
+    "filter": [
+      { "term": { "category": "Snacks" } },
+      { "range": { "price": { "gte": 2, "lte": 8 } } } ] } },
+  "sort": [ { "price": { "order": "desc" } } ] }'
+
+# 7. Typo tolerance (mirrors the app's "did you mean" fallback)
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "query": { "match": { "name": { "query": "landry", "fuzziness": "AUTO" } } } }'
+
+# 8. Facet counts per category (search UI sidebar)
+curl -s "http://localhost:9200/products/_search?pretty" -H "Content-Type: application/json" -d '
+{ "size": 0,
+  "aggs": { "by_category": { "terms": { "field": "category", "size": 25 } } } }'
+```
+
+For the Elastic Cloud endpoint add the auth header, e.g.
+`-H "Authorization: ApiKey $ELASTICSEARCH_API_KEY"`.
+
 ## Environment
 
 Read from repo root `.env` via the compose `x-app-environment` block; inside the
