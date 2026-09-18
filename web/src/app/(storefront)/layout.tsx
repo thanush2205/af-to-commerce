@@ -27,6 +27,9 @@ export default function StorefrontLayout({ children }: { children: ReactNode }) 
                 <Link href="/products" className="hover:text-leaf">
                   Shop
                 </Link>
+                <Link href="/merchants" className="hover:text-leaf">
+                  Merchants
+                </Link>
                 <Link href="/admin" className="hover:text-leaf">
                   Admin
                 </Link>

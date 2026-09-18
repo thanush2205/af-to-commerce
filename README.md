@@ -26,7 +26,7 @@ stripe/  --> Checkout + Stripe Connect marketplace
 | `dagster/`       | Data orchestration & scheduling (assets/jobs)          |
 | `database/`      | Database schemas, migrations, seed data                |
 | `elasticsearch/` | Search index mappings, loaders, queries                |
-| `stripe/`        | Stripe billing, checkout & Stripe Connect              |
+| `stripe/`        | Stripe Checkout + Connect fund-flow documentation |
 
 ## Stage 1 — Product scraper (DONE)
 
@@ -111,8 +111,8 @@ Node.js (Express) bridge between the storefront and the databases:
 
 - `GET /api/products`, `GET /api/products/:id` — **PostgreSQL** catalog (filter/sort/paginate, detail with images)
 - `GET /api/categories` — **PostgreSQL** category tree with counts
-- `GET /api/search` — **Elasticsearch** full-text search (fuzzy, filters, `sort=price_asc`, pagination)
-- JSON `{ data, pagination }` / `{ error }` envelope; 19 `node --test` unit tests pass
+- `GET /api/search` — full-text search (Elasticsearch when available, else PostgreSQL `pg_trgm` fuzzy fallback), filters, `sort=price_asc`, pagination
+- JSON `{ data, pagination }` / `{ error }` envelope; 36 `node --test` unit tests pass
 
 Rerun:
 
@@ -123,6 +123,85 @@ curl "http://localhost:8000/api/search?q=chips&sort=price_asc&limit=5"
 ```
 
 Live API: `http://localhost:8000/api`. See [apps/README.md](apps/README.md).
+
+## Section 12 — Stripe Checkout (DONE)
+
+Checkout runs on Stripe Checkout Sessions with **prices resolved server-side** — the
+storefront sends only `{ sku, quantity }`; the Node API re-reads price/stock from
+PostgreSQL and builds the line items. The amount shown in the browser is never trusted.
+
+- `POST /api/checkout` — creates a Checkout Session; body `{ items: [{sku, quantity}], successUrl?, cancelUrl? }`
+- `GET /api/checkout/session/:id` — confirmation page reads the authoritative amount/status
+- `POST /api/stripe/webhook` — verifies the `stripe-signature` on the RAW body, records orders idempotently into `orders`
+- Storefront `/checkout` → Stripe hosted page → `/checkout/success?session_id=...`
+
+```bash
+# 1. Set a real test key (until then checkout returns 503 stripe_not_configured)
+#    in apps/.env:  STRIPE_SECRET_KEY=sk_test_...
+# 2. Relay webhooks locally (obtains STRIPE_WEBHOOK_SECRET):
+stripe login
+stripe listen --forward-to localhost:8000/api/stripe/webhook
+# 3. Pay with the test card  4242 4242 4242 4242 (any future expiry/CVC)
+```
+
+Why the webhook runs before `express.json()`: in `apps/src/app.js` the webhook router
+uses `express.raw({ type: "application/json" })` so the signed raw body is available;
+it is registered BEFORE the JSON body parser.
+
+## Section 13 — Stripe Connect (DONE)
+
+Marketplace multi-tenancy via **Custom Connected Accounts** (Stage 4).
+
+- Migration `002_stripe_connect.sql` adds `merchants`, links `products.merchant_id`, and the `orders` ledger
+- `POST /api/merchants` programmatically creates a Custom Connected Account on the platform (no merchant signup flow)
+- `GET /api/merchants` / `GET /api/merchants/:id` — list/detail with live account status
+- `PATCH /api/merchants/:id/status` — **status simulator** (`verified | failed | restricted`)
+- `/merchants` storefront page shows status + payout gating
+
+Merchant status gates money: destination charges and transfers are both blocked unless
+status is `verified`.
+
+## Section 14 — Revenue share (DONE)
+
+Platform fee is a **single programmatic function** (`calculatePlatformFee` in
+`apps/src/stripe.js`, unit tested), driven by a tier table:
+
+| Order amount  | Platform fee |
+| ------------- | ------------ |
+| > $100        | 10%          |
+| $50 – $100    | 15%          |
+| < $50         | 20%          |
+
+The split is computed on the server-side total (minor units, exact integers) and is
+the same function used by the webhook, the checkout session and the transfer endpoint —
+never a hardcoded percentage in a payment flow.
+
+## Section 15 — Fund flows (DONE)
+
+Two Stripe Connect flows are implemented and documented (see
+[stripe/README.md](stripe/README.md) for diagrams + balance movement):
+
+1. **Destination charges** — when a cart maps to a single `verified` merchant, the
+   Checkout Session uses `payment_intent_data.transfer_data` + `application_fee_amount`.
+   The customer pays, the platform fee is taken immediately, and the merchant share
+   settles into the connected account's balance — no separate transfer.
+2. **Separate charges and transfers** — the charge runs entirely on the platform; the
+   merchant share is pushed later as a `Transfer` (idempotent per order session). The
+   merchant is tagged on the session metadata even for platform charges, so a
+   restricted merchant's order can be settled once they become payable.
+
+```bash
+# Make the marketplace demoable (idempotent): 3 merchants + product assignment:
+cd apps && npm run seed:marketplace
+```
+
+Inspecting a paid order shows where the money is (`GET /api/orders/:sessionId`):
+the authoritative **Payment Intent**, the computed revenue split, any Transfer,
+and live **platform + connected-account balances**.
+
+**Security note (also covered in the Loom):** the frontend amount is never trusted.
+Prices, totals, the platform fee and the merchant share are all recomputed by the API
+from PostgreSQL + Stripe amounts before any money moves.
 
 ## Prerequisites
 

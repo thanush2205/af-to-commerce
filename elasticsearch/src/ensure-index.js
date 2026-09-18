@@ -17,6 +17,21 @@ function parseArgs(argv) {
 }
 
 /**
+ * Elasticsearch Serverless does not allow explicit shard/replica counts.
+ * Strip only those two settings so the same mapping file keeps working on
+ * self-managed stacks (compose) and on cloud serverless endpoints.
+ */
+function stripServerlessSettings(body) {
+  const copy = structuredClone(body);
+  const indexSettings = copy?.settings?.index;
+  if (indexSettings) {
+    delete indexSettings.number_of_shards;
+    delete indexSettings.number_of_replicas;
+  }
+  return copy;
+}
+
+/**
  * Create the product index on first run; skip when it already exists.
  * Pass `force: true` to delete and recreate (destructive).
  */
@@ -34,7 +49,16 @@ export async function ensureIndex(client, index = ELASTICSEARCH_INDEX, force = f
     await client.indices.delete({ index });
   }
 
-  await client.indices.create({ index, ...body });
+  try {
+    await client.indices.create({ index, ...body });
+  } catch (error) {
+    if (String(error?.message ?? "").includes("not available when running in serverless mode")) {
+      await client.indices.create({ index, ...stripServerlessSettings(body) });
+      console.log("[es] note: stripped shard/replica settings for serverless target");
+    } else {
+      throw error;
+    }
+  }
   return { created: true, action: force ? "recreated" : "created", index };
 }
 

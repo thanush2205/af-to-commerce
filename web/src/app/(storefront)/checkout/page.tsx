@@ -3,45 +3,18 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useCart, type CartItem } from '@/context/CartContext'
-import { formatPrice } from '@/lib/api'
+import { apiPost, formatPrice, type CheckoutSessionResponse } from '@/lib/api'
+
+type SubmitState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
 
 export default function CheckoutPage() {
-  const { items, clearCart, totalPrice } = useCart()
-  const [placed, setPlaced] = useState(false)
+  const { items, totalPrice } = useCart()
+  const [submit, setSubmit] = useState<SubmitState>({ status: 'idle' })
 
   const currency = useMemo(() => items[0]?.currency || 'CAD', [items])
-
-  if (placed) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-24 text-center sm:px-6">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-leaf-light">
-          <svg
-            className="h-8 w-8 text-leaf"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              fillRule="evenodd"
-              d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </div>
-        <h1 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
-          Order confirmed
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-gray-500">
-          Thanks for your order. A confirmation has been sent to your email and your
-          basket has been cleared. (Payment processing is wired up in the Stripe
-          section.)
-        </p>
-        <Link href="/products" className="btn-primary mt-8 inline-block">
-          Continue shopping
-        </Link>
-      </div>
-    )
-  }
 
   if (items.length === 0) {
     return (
@@ -57,9 +30,28 @@ export default function CheckoutPage() {
     )
   }
 
-  function placeOrder() {
-    setPlaced(true)
-    clearCart()
+  async function placeOrder() {
+    setSubmit({ status: 'loading' })
+    try {
+      const body = {
+        // The frontend ONLY sends sku + quantity. The backend re-fetches
+        // authoritative prices from PostgreSQL — a tampered amount is ignored.
+        items: items.map((item: CartItem) => ({
+          sku: item.sku,
+          quantity: item.quantity,
+        })),
+        successUrl: `${window.location.origin}/checkout/success`,
+        cancelUrl: `${window.location.origin}/checkout/cancel`,
+      }
+      const session = await apiPost<CheckoutSessionResponse>('/api/checkout', body)
+      window.location.assign(session.url)
+    } catch (err) {
+      setSubmit({
+        status: 'error',
+        message:
+          err instanceof Error ? err.message : 'Could not start checkout. Try again.',
+      })
+    }
   }
 
   return (
@@ -83,6 +75,10 @@ export default function CheckoutPage() {
               </li>
             ))}
           </ul>
+          <p className="mt-4 text-xs text-gray-400">
+            Prices shown are indicative. The final amount is authoritative and
+            re-calculated securely on the server before payment.
+          </p>
         </section>
 
         <section className="h-fit rounded-2xl border border-gray-200 bg-white p-6">
@@ -101,9 +97,24 @@ export default function CheckoutPage() {
               <span className="text-lg font-bold text-leaf">{formatPrice(totalPrice, currency)}</span>
             </div>
           </div>
-          <button type="button" onClick={placeOrder} className="btn-primary mt-5 block w-full text-center">
-            Place order
+
+          <button
+            type="button"
+            onClick={placeOrder}
+            disabled={submit.status === 'loading'}
+            className="btn-primary mt-5 block w-full text-center disabled:cursor-not-allowed disabled:bg-gray-300"
+          >
+            {submit.status === 'loading'
+              ? 'Redirecting to secure checkout…'
+              : 'Proceed to payment'}
           </button>
+
+          {submit.status === 'error' && (
+            <p className="mt-3 rounded-lg bg-red-50 p-3 text-xs leading-5 text-red-700">
+              {submit.message}
+            </p>
+          )}
+
           <Link
             href="/cart"
             className="mt-3 block text-center text-sm text-gray-500 underline transition hover:text-leaf"

@@ -1,0 +1,47 @@
+# Render Blueprint for the AF-TO Commerce API.
+#
+# Deploy from the Render dashboard: New -> Blueprint -> this file.
+# Secret env vars (marked sync: false) are entered in the Render dashboard:
+#   DATABASE_URL, ELASTICSEARCH_URL, ELASTICSEARCH_API_KEY,
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, CORS_ORIGINS
+#
+# The storefront (Next.js + Payload) deploys on Vercel from the web/ folder.
+
+databases:
+  - name: af-commerce-db
+    databaseName: afcommerce
+    user: afcommerce
+    plan: free
+
+services:
+  - type: web
+    name: af-commerce-api
+    runtime: node
+    rootDir: apps
+    plan: free
+    buildCommand: npm ci && npm run test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: '8000'
+      - key: APP_ENV
+        value: production
+      - key: ELASTICSEARCH_INDEX
+        value: products
+      - key: PG_SSL
+        value: 'true'
+      - key: DATABASE_URL
+        sync: false
+      - key: ELASTICSEARCH_URL
+        sync: false
+      - key: ELASTICSEARCH_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ES_REQUEST_TIMEOUT_MS
+        value: '4000'

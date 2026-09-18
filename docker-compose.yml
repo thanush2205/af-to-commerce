@@ -36,7 +36,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
@@ -185,15 +185,15 @@ services:
       api:
         condition: service_healthy
 
-  stripe-worker:
-    build:
-      context: ./stripe
-    restart: unless-stopped
-    environment:
-      <<: *app-environment
-    depends_on:
-      database:
-        condition: service_healthy
+  # stripe-worker:
+#   build:
+#     context: ./stripe
+#   restart: unless-stopped
+#   environment:
+#     <<: *app-environment
+#   depends_on:
+#     database:
+#       condition: service_healthy
 
 volumes:
   database-data:

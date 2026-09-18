@@ -19,12 +19,12 @@ function baseUrl() {
 }
 
 export function createEsClient() {
-  const client = new Client({
+  const options = {
     node: baseUrl(),
     requestTimeout: 30_000,
-  });
+  };
   if (process.env.ELASTICSEARCH_API_KEY) {
-    client.config.auth = { apiKey: process.env.ELASTICSEARCH_API_KEY };
+    options.auth = { apiKey: process.env.ELASTICSEARCH_API_KEY };
   }
-  return client;
+  return new Client(options);
 }

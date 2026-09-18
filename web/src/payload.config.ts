@@ -36,9 +36,11 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URI || process.env.DATABASE_URL || '',
+      ssl: process.env.PAYLOAD_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
     },
     // Dev-mode schema push keeps the demo stack turn-key. Use migrations in prod.
-    push: isDev,
+    push: process.env.PAYLOAD_PUSH === 'true' || isDev,
+
   }),
   sharp,
   plugins: [],

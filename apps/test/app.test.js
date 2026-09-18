@@ -44,3 +44,27 @@ test("bad method returns JSON 404 not crash", async () => {
   assert.equal(res.status, 404);
   assert.equal(res.headers.get("content-type").includes("application/json"), true);
 });
+
+test("allowlisted browser origins get CORS headers; POST preflights pass", async () => {
+  for (const origin of ["http://localhost:3000", "http://localhost:3001"]) {
+    const preflight = await fetch(`${base}/api/checkout`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    });
+    assert.equal(preflight.status, 204, `preflight from ${origin}`);
+    assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
+    assert.match(preflight.headers.get("access-control-allow-methods"), /POST/);
+  }
+});
+
+test("non-allowlisted origins get no CORS headers", async () => {
+  const res = await fetch(`${base}/api/checkout`, {
+    method: "OPTIONS",
+    headers: { Origin: "http://evil.example.com", "Access-Control-Request-Method": "POST" },
+  });
+  assert.equal(res.headers.get("access-control-allow-origin"), null);
+});

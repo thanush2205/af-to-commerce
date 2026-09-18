@@ -39,15 +39,17 @@ Indexes target the hot read paths (listing, filtering, sorting):
 | `idx_product_images_product` | join products → images |
 | `products_sku_key`, `products_slug_key`, `categories_slug_key`, `subcategories_category_slug_key` | uniqueness + upsert lookup (automatically indexed) |
 
-Full-text search deliberately lives in Elasticsearch, not Postgres, keeping the DB schema simple and the search performance predictable.
+Elasticsearch provides the primary full-text index, but it is **optional**: when it is unavailable the API serves search from Postgres. Migration `003_pg_trgm_search.sql` enables `pg_trgm` + GIN trigram indexes so the fallback also supports typo-tolerant matching ("landry" → "laundry").
 
 ## Migrations
 
 ```
 database/
 ├── migrations/
-│   ├── up/   001_create_catalog_schema.sql   # apply
-│   └── down/ 001_drop_catalog_schema.sql     # rollback
+│   ├── up/   001_create_catalog_schema.sql   # catalog tables + indexes
+│   ├── up/   002_stripe_connect.sql          # merchants + orders (Stripe Connect)
+│   ├── up/   003_pg_trgm_search.sql          # pg_trgm fuzzy-search extension + GIN indexes
+│   └── down/ (matching rollbacks)
 ├── README.md
 ```
 

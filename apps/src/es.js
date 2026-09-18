@@ -19,6 +19,22 @@ export const client = new Client({
 
 export const FULL_TEXT_FIELDS = ["name^3", "description"];
 
+/**
+ * Open a connection to Elasticsearch at boot so the first user search does not
+ * pay TLS/connection setup inside the 2s request budget. Non-fatal: when ES is
+ * down the pool stays empty and searches fall back to PostgreSQL.
+ */
+export async function warmUpElasticsearch(timeoutMs = 2000) {
+  try {
+    await client.ping({ requestTimeout: timeoutMs });
+    console.log("[es] connection warm - search will use Elasticsearch");
+    return true;
+  } catch {
+    console.log("[es] warmup skipped - search will fall back to PostgreSQL");
+    return false;
+  }
+}
+
 export function buildSearchBody({
   q,
   category,
@@ -121,7 +137,10 @@ export function translateHits(body, result) {
   };
 }
 
-export async function runSearch(body) {
-  const result = await client.search({ index: config.elasticsearch.index, body });
+export async function runSearch(body, { requestTimeout } = {}) {
+  const result = await client.search(
+    { index: config.elasticsearch.index, body },
+    { requestTimeout },
+  );
   return translateHits(body, result);
 }
