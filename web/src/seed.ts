@@ -142,7 +142,7 @@ async function seedProducts(categoryIds: Map<string, number>): Promise<void> {
         slug: p.slug,
         description: p.description || undefined,
         price: Number(p.price),
-        currency: p.currency || 'CAD',
+        currency: (p.currency || 'CAD') as 'CAD' | 'USD',
         image: p.mainImage || p.thumbnail || undefined,
         category: categoryId,
         stockStatus: p.availability,
