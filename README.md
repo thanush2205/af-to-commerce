@@ -2,6 +2,22 @@
 
 Mini grocery commerce platform. Scrapes the Summerhill Market online catalog, ingests it via Dagster into PostgreSQL + Elasticsearch, serves it through a Node.js API and a Next.js/Payload storefront with Stripe checkout and a Stripe Connect marketplace.
 
+Live reference builds (demo, free-tier so they may sleep):
+- API: <https://af-to-commerce-api.onrender.com> (health: `/healthz`)
+- Storefront + CMS Admin: deployed on Vercel (see `docs/DEPLOYMENT.md`)
+
+## What this project is
+
+A small online grocery shop, built end-to-end to show how a real product catalog
+gets scraped, cleaned, stored, searched, served, and sold:
+
+1. **Scraper** copies the live Summerhill Market catalog into JSON.
+2. **Dagster** reads that JSON, cleans it, and loads it into **PostgreSQL**
+   (source of truth) and **Elasticsearch** (search index).
+3. **Node.js API** serves catalog, search, and Stripe checkout.
+4. **Next.js + Payload** storefront shows products and runs the cart/checkout.
+5. **Stripe Checkout + Connect** take the payment and split it with merchants.
+
 ## Architecture
 
 ```text
@@ -12,21 +28,191 @@ Summerhill Market (Homesome API)
         |
 dagster/ --> PostgreSQL (source of truth) + Elasticsearch (search index)
         |
-apps/api/ --> Node.js API (products, search, checkout)
+apps/   --> Node.js API (products, search, checkout, webhooks)
         |
-apps/web/ --> Next.js + Payload CMS storefront
+web/    --> Next.js + Payload CMS storefront
         |
-stripe/  --> Checkout + Stripe Connect marketplace
+Stripe  --> Checkout Sessions + Stripe Connect marketplace + webhook -> orders
 ```
 
 | Directory        | Responsibility                                        |
 | ---------------- | ----------------------------------------------------- |
-| `apps/`          | Next.js + Payload storefront and Node.js API           |
+| `apps/`          | Node.js API (catalog, search, checkout, Stripe webhooks) |
+| `web/`           | Next.js + Payload CMS storefront                      |
 | `scraper/`       | Summerhill catalog scraper -> `products.json` (Stage 1, DONE) |
 | `dagster/`       | Data orchestration & scheduling (assets/jobs)          |
 | `database/`      | Database schemas, migrations, seed data                |
 | `elasticsearch/` | Search index mappings, loaders, queries                |
 | `stripe/`        | Stripe Checkout + Connect fund-flow documentation |
+
+### Architecture decisions
+
+- **PostgreSQL is the source of truth.** Every product row, category, merchant
+  and order lives in Postgres. Elasticsearch is only a fast search index built
+  *from* Postgres/Dagster — the app never asks Elasticsearch for authority.
+- **Elasticsearch for search, Postgres for everything else.** Full-text search
+  needs relevance and fuzziness; Postgres stays the relational owner. If
+  Elasticsearch is slow or down, the API falls back to Postgres `pg_trgm`
+  fuzzy search with the same response shape, so search never hard-fails.
+- **Server-side pricing.** The browser only ever sends `{ sku, quantity }`.
+  Prices, totals, fees and merchant shares are recomputed by the API from the
+  database and Stripe, never trusted from the client.
+- **Raw-body webhooks before JSON parsing.** Stripe's signature check needs the
+  exact bytes Stripe sent, so the webhook router mounts before `express.json()`.
+- **One write path in one language.** Dagster (Python) is the single production
+  ingestion route; the standalone Node ES loader exists only for ad-hoc testing.
+
+### Data flow (end to end)
+
+```text
+scraper -> products.json -> Dagster (normalize) -> PostgreSQL  (all products)
+                                          \-> Elasticsearch (search index)
+API serves: /api/products  (Postgres)
+            /api/search    (Elasticsearch, falls back to Postgres pg_trgm)
+Storefront: /products -> cart -> /api/checkout -> Stripe hosted page
+Stripe webhook: checkout.session.completed -> orders table (revenue split)
+```
+
+## Setup (local development)
+
+Prerequisites: Docker Desktop, Node.js >= 20, and a PostgreSQL 14+ database
+(local Postgres or Supabase) with `pg_trgm` available.
+
+```bash
+# 1. Install dependencies for each piece that runs natively
+cd scraper && npm install
+cd ../elasticsearch && npm install
+cd ../apps && npm install
+cd ../web && npm install
+
+# 2. Config — copy the example and fill in real values (never commit .env)
+cp .env.example .env          # review every variable (DATABASE_URL, Stripe keys, ES)
+
+# 3. Start the dependency stack (Postgres applies schema on first boot)
+docker compose up -d --build database elasticsearch
+
+# 4. Ingest the catalog once (scraper JSON -> Postgres + Elasticsearch)
+docker compose exec -T dagster-webserver pytest -q /workspace/tests
+docker compose exec -T dagster-webserver \
+  dagster asset materialize -f /workspace/definitions.py \
+  --select raw_products,normalized_products,postgres_products,elasticsearch_products
+
+# 5. Run the API + storefront
+cd apps && npm run dev          # http://localhost:8000/api
+cd web  && npm run dev          # http://localhost:3000  (/admin for the CMS)
+
+# 6. Stripe webhooks locally (prints a whsec_... secret; put it in apps/.env)
+stripe login
+stripe listen --forward-to localhost:8000/api/stripe/webhook
+
+# 7. Seed the CMS + marketplace demo data (idempotent)
+cd web && npm run seed
+cd apps && npm run seed:marketplace
+```
+
+Then verify:
+`curl "http://localhost:8000/api/search?q=chips"` and open the storefront at
+`http://localhost:3000/products`. Pay with the Stripe test card
+`4242 4242 4242 4242`.
+
+> Each component has its own README with rerun steps and tests
+> (`scraper/`, `dagster/`, `elasticsearch/`, `database/`, `apps/`, `web/`).
+> Deployment to Render + Vercel is in `docs/DEPLOYMENT.md`.
+
+## Stripe flow (end to end)
+
+Checkout uses **Stripe Checkout Sessions** with server-side pricing. The
+storefront never sends money amounts — only items.
+
+```text
+[Storefront cart]  POST /api/checkout  { items: [{ sku, quantity }] }
+        |
+        v
+[API]  reads price + stock from PostgreSQL (never trusts the browser)
+        \-> picks a merchant payout flow from the cart:
+              one verified merchant  -> destination charge (+ Connect fee)
+              otherwise             -> platform charge (transfer later)
+        v
+[Stripe] returns a hosted checkout URL -> customer pays (test card 4242 4242 4242 4242)
+        v
+[webhook] Stripe posts checkout.session.completed
+        \-> verifies stripe-signature on the raw body
+        \-> records the order in `orders` (idempotent, ON CONFLICT session id)
+        \-> stores the exact platform/merchant split computed by the API
+        v
+[Storefront] /checkout/success?session_id=... reads the authoritative result
+```
+
+Key rules:
+
+- **Platform fee** — one tested function `calculatePlatformFee` (never a
+  hardcoded percentage in a flow):
+
+  | Order total | Platform fee |
+  | ----------- | ------------ |
+  | > $100      | 10%          |
+  | $50 – $100  | 15%          |
+  | < $50       | 20%          |
+
+- **Revenue split is computed server-side** on minor units and re-used by the
+  checkout session, the webhook, and the transfer endpoint — so what the
+  customer pays, what the platform keeps, and what the merchant receives can
+  never disagree.
+- **Merchant status gates money.** Merchants must be `verified` for
+  destination charges or transfers; `GET /api/merchants/:id` shows the live
+  Stripe account status.
+- **Idempotent webhook.** Re-delivered events (Stripe sends at-least-once)
+  `ON CONFLICT DO NOTHING` on `stripe_session_id`.
+
+Two Connect fund flows are implemented (diagrams in `stripe/README.md`):
+**destination charges** (single verified merchant: fee taken at payment,
+merchant share settles immediately) and **separate charges + transfers**
+(platform charge, merchant share pushed later as an idempotent `Transfer`,
+keyed to the order session). Inspect a paid order with
+`GET /api/orders/:sessionId`.
+
+> Demo caveat: the live platform account has **Connect not enabled** yet, so
+> merchants are simulation accounts (`acct_sim_*`). Orders record and fees
+> split correctly, but actual merchant transfers return a 409 until Connect is
+> activated.
+
+## Search design
+
+```text
+Storefront  /products?q=chips&category=dry-goods-and-baking&sort=price_asc
+        |
+        v
+API        GET /api/search
+        |-- Elasticsearch first (2-4s budget, ES_REQUEST_TIMEOUT_MS)
+        |      multi_match on name^2 + description      (full-text relevance)
+        |      term     category / subcategory          (exact filters; slugs
+        |                                                resolved to stored names)
+        |      term     availability / organic
+        |      range    price
+        |      sort     price / name, from/size pagination
+        |
+        \-- Postgres fallback (ES down/slow)
+               ILIKE '%q%' on name + description        (exact substring)
+               + pg_trgm word_similarity > 0.4          (typo tolerance, e.g. "landry")
+               + the same filters and sorting            (identical response shape)
+```
+
+Design points:
+
+- **Same response envelope either way** — `{ data, pagination }`. The
+  storefront cannot tell which engine answered, so a search outage degrades to
+  a slightly slower Postgres query instead of an error page.
+- **Filters use stored display names.** `category`/`subcategory` are `keyword`
+  fields in Elasticsearch, and the API resolves the storefront's slug form to
+  the exact stored name before the `term` query (SQL helper `canonicalName`).
+- **Relevance over exact-only.** `name` is boosted (`name^2`) over
+  `description`, and `multi_match` with `tie_breaker` blends both fields.
+  `name.keyword` (lowercase normalizer) exists for exact/aggregation use.
+- **Typo tolerance on the fallback too.** When the exact phrase returns
+  nothing, the Postgres path retries with `pg_trgm` `word_similarity`
+  ("landry" -> "laundry"), matching the Elasticsearch-first behavior.
+- Live curl examples are in `elasticsearch/query-examples.md` and in the
+  Dagster README's "Elasticsearch sample queries" section.
 
 ## Stage 1 — Product scraper (DONE)
 
@@ -112,7 +298,7 @@ Node.js (Express) bridge between the storefront and the databases:
 - `GET /api/products`, `GET /api/products/:id` — **PostgreSQL** catalog (filter/sort/paginate, detail with images)
 - `GET /api/categories` — **PostgreSQL** category tree with counts
 - `GET /api/search` — full-text search (Elasticsearch when available, else PostgreSQL `pg_trgm` fuzzy fallback), filters, `sort=price_asc`, pagination
-- JSON `{ data, pagination }` / `{ error }` envelope; 36 `node --test` unit tests pass
+- JSON `{ data, pagination }` / `{ error }` envelope; 38 `node --test` unit tests pass
 
 Rerun:
 
