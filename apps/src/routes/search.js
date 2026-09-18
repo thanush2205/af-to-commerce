@@ -77,6 +77,24 @@ async function trgmEnabled() {
   return trgmAvailable;
 }
 
+// The storefront filters by slug (e.g. "dry-goods-and-baking") while
+// Elasticsearch indexes the display name ("Dry Goods & Baking"). Resolve the
+// canonical NAME from Postgres (slug OR name, case-insensitive) so one param
+// drives both engines consistently.
+async function canonicalName(table, param) {
+  const value = optionalString(param);
+  if (!value) return undefined;
+  try {
+    const result = await query(
+      `SELECT name FROM ${table} WHERE lower(name) = lower($1) OR lower(slug) = lower($1) LIMIT 1`,
+      [value],
+    );
+    return result.rows.length ? result.rows[0].name : value;
+  } catch {
+    return value;
+  }
+}
+
 export async function searchPg({
   q,
   category,
@@ -215,6 +233,11 @@ searchRouter.get(
       from: offset,
       size: limit,
     };
+
+    // Normalize slug-or-name params to the stored names before touching ES so
+    // the term filters match what the index actually contains.
+    opts.category = await canonicalName("categories", opts.category);
+    opts.subcategory = await canonicalName("subcategories", opts.subcategory);
 
     const body = buildSearchBody(opts);
 

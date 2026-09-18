@@ -37,6 +37,12 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URI || process.env.DATABASE_URL || '',
       ssl: process.env.PAYLOAD_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+      // Supabase sits behind a pooler; keep the socket alive and cap churn so
+      // idle connections don't get recycled mid-request.
+      max: 5,
+      connectionTimeoutMillis: 15_000,
+      idleTimeoutMillis: 30_000,
+      keepAlive: true,
     },
     // Dev-mode schema push keeps the demo stack turn-key. Use migrations in prod.
     push: process.env.PAYLOAD_PUSH === 'true' || isDev,

@@ -15,7 +15,7 @@ import config from './payload.config'
 
 const API_URL = process.env.API_URL || 'http://localhost:8000'
 const PAGE_SIZE = 250
-const CONCURRENCY = 6
+const CONCURRENCY = 2
 // Deterministic, pseudo-curated: ~every 126th product gets the "featured" flag
 // so the homepage has a handful of rotated picks across categories.
 const FEATURED_EVERY = 126
@@ -71,6 +71,24 @@ async function mapWithConcurrency<T, R>(
   )
   await Promise.all(workers)
   return results
+}
+
+// The Supabase transaction pooler occasionally drops an idle connection; retry
+// on transient failure rather than dying mid-page.
+async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      console.warn(`Retry ${attempt}/${attempts} after error: ${(err as Error).message}`)
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 750 * attempt))
+      }
+    }
+  }
+  throw lastErr
 }
 
 async function ensureAdminUser(): Promise<void> {
@@ -129,45 +147,49 @@ async function seedProducts(categoryIds: Map<string, number>): Promise<void> {
   let pages = 1
 
   do {
-    const res = await apiJson<{ data: ApiProduct[]; pagination: { pages: number } }>(
-      `/api/products?page=${page}&limit=${PAGE_SIZE}`,
+    const res = await withRetry(() =>
+      apiJson<{ data: ApiProduct[]; pagination: { pages: number } }>(
+        `/api/products?page=${page}&limit=${PAGE_SIZE}`,
+      ),
     )
     pages = res.pagination.pages
 
-    await mapWithConcurrency(res.data, CONCURRENCY, async (p, index) => {
-      const categoryId = categoryIds.get(p.category?.slug ?? '')
-      const globalIndex = (page - 1) * PAGE_SIZE + index
-      const data = {
-        title: p.name,
-        slug: p.slug,
-        description: p.description || undefined,
-        price: Number(p.price),
-        currency: (p.currency || 'CAD') as 'CAD' | 'USD',
-        image: p.mainImage || p.thumbnail || undefined,
-        category: categoryId,
-        stockStatus: p.availability,
-        featured: globalIndex % FEATURED_EVERY === 0,
-        sku: p.sku,
-        brand: p.brand || undefined,
-        unit: p.unit || undefined,
-      }
-      const existing = await payload.find({
-        collection: 'products',
-        where: { slug: { equals: p.slug } },
-        limit: 1,
-        depth: 0,
-      })
-      if (existing.totalDocs > 0) {
-        await payload.update({
+    await mapWithConcurrency(res.data, CONCURRENCY, async (p, index) =>
+      withRetry(async () => {
+        const categoryId = categoryIds.get(p.category?.slug ?? '')
+        const globalIndex = (page - 1) * PAGE_SIZE + index
+        const data = {
+          title: p.name,
+          slug: p.slug,
+          description: p.description || undefined,
+          price: Number(p.price),
+          currency: (p.currency || 'CAD') as 'CAD' | 'USD',
+          image: p.mainImage || p.thumbnail || undefined,
+          category: categoryId,
+          stockStatus: p.availability,
+          featured: globalIndex % FEATURED_EVERY === 0,
+          sku: p.sku,
+          brand: p.brand || undefined,
+          unit: p.unit || undefined,
+        }
+        const existing = await payload.find({
           collection: 'products',
-          id: existing.docs[0].id,
-          data,
+          where: { slug: { equals: p.slug } },
+          limit: 1,
+          depth: 0,
         })
-      } else {
-        await payload.create({ collection: 'products', data })
-      }
-      upserted += 1
-    })
+        if (existing.totalDocs > 0) {
+          await payload.update({
+            collection: 'products',
+            id: existing.docs[0].id,
+            data,
+          })
+        } else {
+          await payload.create({ collection: 'products', data })
+        }
+        upserted += 1
+      }),
+    )
 
     console.log(`Page ${page}/${pages} done (${upserted} products upserted so far)`)
     page += 1
